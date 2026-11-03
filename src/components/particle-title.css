@@ -1,0 +1,36 @@
+.particle-title {
+  position: relative;
+  isolation: isolate;
+  margin: 45px 0 25px;
+}
+#intro .particle-title h1 { margin: 0; transform-origin: 40% 55%; }
+.title-particles {
+  position: absolute;
+  width: calc(100% + 200px);
+  height: calc(100% + 160px);
+  left: -100px;
+  top: -80px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 3;
+}
+.title-light {
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+  border-radius: 50%;
+  opacity: .18;
+  transition: opacity 1.5s ease;
+}
+.title-light-lavender {
+  inset: -65% -25%;
+  background: radial-gradient(ellipse, #c4a2de77, transparent 65%);
+  transform: rotate(-25deg);
+}
+.title-light-gold {
+  inset: -45% -15% -30% 15%;
+  background: radial-gradient(ellipse at 65% 40%, #e7c27c66, transparent 60%);
+}
+.particle-title[data-phase='forming'] .title-light { opacity: .9; }
+@media (max-width: 700px) { .particle-title { margin-top: 30px; } }
+@media (prefers-reduced-motion: reduce) { .title-particles, .title-light { display: none; } }
