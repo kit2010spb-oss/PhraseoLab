@@ -182,7 +182,7 @@ export function createHeartStage(host: HTMLElement, onReveal: () => void): Heart
     root.rotation.y=T.MathUtils.lerp(root.rotation.y,reduced.matches?0:pointer.x*.1,.045)
     root.rotation.x=T.MathUtils.lerp(root.rotation.x,reduced.matches?0:-pointer.y*.05,.045)
     camera.position.set(mobile?.25:-1.65,mobile?1.25:1.1,cameraState.distance+(mobile?6.5:0))
-    camera.lookAt(mobile?.2:-.8,mobile?.15:.1,0)
+    camera.lookAt(mobile?.5:-.8,mobile?.15:.1,0)
     renderer.render(scene,camera)
   }
   function loop() {raf=0;if(!visible||document.hidden||disposed)return;render();if(!reduced.matches)raf=requestAnimationFrame(loop)}
