@@ -1,4 +1,5 @@
 import * as T from 'three'
+import { createBookArt } from './book-art'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
@@ -47,10 +48,12 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
   }
   const t=new T.CanvasTexture(c);t.colorSpace=T.SRGBColorSpace;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());textures.push(t);return t
  }
- const coverMat=new T.MeshStandardMaterial({map:texture('cover'),color:'#ad6c9d',roughness:.34,metalness:.3})
- const pageTexture=texture('page');pageTexture.center.set(.5,.5);pageTexture.rotation=Math.PI
- const paper=new T.MeshStandardMaterial({map:pageTexture,roughness:.72,color:'#ffe3ba',side:T.DoubleSide})
- const edge=new T.MeshStandardMaterial({color:'#dfbd7c',roughness:.5,metalness:.25,side:T.DoubleSide})
+ const bookTexture=(kind:'cover'|'grain'|number)=>{const t=createBookArt(kind);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());textures.push(t);return t}
+ const grain=bookTexture('grain')
+ const coverMat=new T.MeshPhysicalMaterial({map:bookTexture('cover'),bumpMap:grain,bumpScale:.012,roughness:.38,metalness:.12,clearcoat:.35,clearcoatRoughness:.3})
+ const papers=[0,1,2,3].map(i=>new T.MeshStandardMaterial({map:bookTexture(i),color:'#dec6a3',roughness:.83,envMapIntensity:.3,bumpMap:grain,bumpScale:.002,side:T.DoubleSide,emissive:'#c77b29',emissiveIntensity:.035}))
+ const edges=[0,1,2].map(i=>new T.MeshStandardMaterial({color:['#d3aa63','#dcb775','#c8a15e'][i],roughness:.54,metalness:.32,side:T.DoubleSide}))
+ const bookGold=new T.MeshStandardMaterial({color:'#f2c366',metalness:.94,roughness:.19})
  const book=new T.Group();book.position.set(0,-.85,.3);book.scale.setScalar(1.3);root.add(book)
  const halves:T.Group[]=[]
  for(const side of [-1,1]){
@@ -60,18 +63,30 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
   mesh(new T.BoxGeometry(.065,.1,3.08),gold,half,side*2.78,-.07,0)
   // Real stacked, curved sheets; each surface has a smoothly lifted gutter.
   for(let layer=0;layer<26;layer++){
-   const geometry=new T.PlaneGeometry(2.67,2.89,34,10);const attr=geometry.attributes.position
-   for(let i=0;i<attr.count;i++){const u=(attr.getX(i)+1.335)/2.67,z=attr.getY(i);attr.setXYZ(i,side*(.025+u*2.67),.02+layer*.009+.22*Math.sin(u*Math.PI)-.06*u,z)}geometry.computeVertexNormals()
-   mesh(geometry,layer===25?paper:edge,half)
+   const geometry=new T.PlaneGeometry(2.67,2.89,34,10);const attr=geometry.attributes.position,uv=geometry.attributes.uv
+   for(let i=0;i<attr.count;i++){const u=(attr.getX(i)+1.335)/2.67,z=attr.getY(i);attr.setXYZ(i,side*(.025+u*2.67),.02+layer*.009+.22*Math.sin(u*Math.PI)-.06*u,z);uv.setXY(i,side<0?1-u:u,1-uv.getY(i))}geometry.computeVertexNormals()
+   mesh(geometry,layer===25?papers[side<0?0:1]:edges[layer%3],half)
   }
-  // Raised gold arabesques run along both leather cover edges.
-  for(let j=0;j<8;j++){const pts:T.Vector3[]=[];for(let i=0;i<30;i++){const a=i/29*Math.PI*1.7;pts.push(new T.Vector3(side*(.25+j*.3+Math.sin(a)*.12),-.045+Math.cos(a)*.035,1.55))}tube(pts,.012,gold,half)}
+  // Cast metal corner protectors and leaf-shaped tooling belong to the cover.
+  for(const z of [-1.44,1.44]){
+   const plate=new T.Shape();plate.moveTo(0,0);plate.lineTo(.42,0);plate.quadraticCurveTo(.2,.08,.15,.3);plate.lineTo(0,.42);plate.closePath()
+   const corner=mesh(new T.ExtrudeGeometry(plate,{depth:.025,bevelEnabled:true,bevelSize:.014,bevelThickness:.012,bevelSegments:3}),bookGold,half,side*2.72,-.04,z)
+   corner.rotation.x=-Math.PI/2;corner.rotation.z=side<0?(z<0?0:-Math.PI/2):(z<0?Math.PI/2:Math.PI)
+  }
+  for(let j=0;j<11;j++){
+   const px=side*(.2+j*.23),curve:T.Vector3[]=[]
+   for(let k=0;k<22;k++){const a=k/21*Math.PI*1.7;curve.push(new T.Vector3(px+side*Math.sin(a)*.13,-.11+Math.cos(a)*.035,1.566))}tube(curve,.009,bookGold,half)
+   for(const direction of [-1,1]){const leaf=new T.Shape();leaf.moveTo(0,0);leaf.bezierCurveTo(.08,.08,.16,.04,.17,0);leaf.bezierCurveTo(.08,-.055,.025,-.035,0,0);const l=mesh(new T.ExtrudeGeometry(leaf,{depth:.009,bevelEnabled:true,bevelSize:.004,bevelThickness:.004,bevelSegments:2}),bookGold,half,px,-.11,1.57);l.rotation.z=direction*.6+(side<0?Math.PI:0)}
+  }
+
  }
  mesh(new T.CylinderGeometry(.16,.16,3.12,24),leather,book,0,-.1,0).rotation.x=Math.PI/2
- const jewel=mesh(new T.OctahedronGeometry(.16,1),new T.MeshPhysicalMaterial({color:'#d579f5',metalness:.2,roughness:.08,transmission:.45,thickness:.3,emissive:'#8b2eb4',emissiveIntensity:.5}),book,0,-.05,1.66)
- mesh(new T.TorusGeometry(.22,.038,12,48),gold,book,0,-.05,1.6)
+ const jewel=mesh(new T.OctahedronGeometry(.235,1),new T.MeshPhysicalMaterial({color:'#ab3ac4',metalness:.18,roughness:.06,transmission:.5,thickness:.45,ior:1.8,clearcoat:1,emissive:'#6e168b',emissiveIntensity:.22}),book,0,-.05,1.66)
+ mesh(new T.TorusGeometry(.28,.042,12,64),bookGold,book,0,-.05,1.6)
+ for(let i=0;i<12;i++){const a=i/12*Math.PI*2;mesh(new T.SphereGeometry(.026,10,8),bookGold,book,Math.sin(a)*.28,-.05+Math.cos(a)*.28,1.63)}
+ const gutter=mesh(new T.PlaneGeometry(.1,2.86),new T.MeshStandardMaterial({color:'#ffcc79',emissive:'#ffb84a',emissiveIntensity:1.3,transparent:true,opacity:.3,side:T.DoubleSide}),book,0,.235,0);gutter.rotation.x=-Math.PI/2
  const turning:{mesh:T.Mesh;offset:number}[]=[]
- for(let n=0;n<3;n++){const g=new T.PlaneGeometry(2.65,2.88,42,12);const page=mesh(g,paper,book);turning.push({mesh:page,offset:n*.38})}
+ for(let n=0;n<3;n++){const g=new T.PlaneGeometry(2.65,2.88,42,12);const page=mesh(g,papers[(n+1)%4],book);turning.push({mesh:page,offset:n*.38})}
  const floor=mesh(new T.CircleGeometry(12,64),new T.ShadowMaterial({color:'#100517',opacity:.3}),scene,0,-1.55,0);floor.rotation.x=-Math.PI/2
  // Authored ornamental motifs share the book's materials, lighting and world coordinates.
  const motifs:T.Group[]=[]
@@ -135,7 +150,7 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
    book.position.y=-.85-(1-birth)*2.5;book.rotation.y=(1-birth)*-.35+Math.sin(idle*.2)*.015
    halves[0].rotation.z=-(1-open)*1.48;halves[1].rotation.z=(1-open)*1.48
    turning.forEach(({mesh:page,offset})=>{const stamp=Math.min(t,8);if(page.userData.stamp===stamp)return;page.userData.stamp=stamp;const turn=smooth(4+offset,6.2+offset,t),angle=turn*Math.PI,attr=page.geometry.attributes.position
-    for(let i=0;i<attr.count;i++){const u=(i%43)/42,v=Math.floor(i/43)/12;const bend=Math.sin(u*Math.PI)*Math.sin(angle)*.55;attr.setXYZ(i,Math.cos(angle)*u*2.65,.22+Math.sin(angle)*u*2.65+bend+.15*Math.sin(u*Math.PI),(v-.5)*2.88)}page.geometry.computeVertexNormals();page.visible=t>3.4;})
+    for(let i=0;i<attr.count;i++){const u=(i%43)/42,v=Math.floor(i/43)/12;page.geometry.attributes.uv.setXY(i,Math.cos(angle)<0?1-u:u,1-v);const bend=Math.sin(u*Math.PI)*Math.sin(angle)*.55;attr.setXYZ(i,Math.cos(angle)*u*2.65,.22+Math.sin(angle)*u*2.65+bend+.15*Math.sin(u*Math.PI),(v-.5)*2.88)}page.geometry.attributes.uv.needsUpdate=true;page.geometry.computeVertexNormals();page.visible=t>3.4;})
    motifs.forEach((g,i)=>{const target=g.userData.target as T.Vector3,p=smooth(5+i*.25,8.4+i*.12,t);g.position.copy(target).multiplyScalar(p);g.position.y+=(-.7)*(1-p)+Math.sin(idle*.5+i)*.045*p;g.scale.setScalar(Math.max(.001,p));g.rotation.set(Math.sin(idle*.2+i)*.08,Math.sin(idle*.25+i)*.18,(i%2?1:-1)*.15+(1-p)*1.5)})
    ribbons.forEach((o,i)=>{o.scale.setScalar(Math.max(.001,objects));o.rotation.y=Math.sin(idle*.1+i)*.06;(o.material as T.MeshStandardMaterial).opacity=.2+objects*.25})
    for(let i=0;i<count;i++){const a=i*2.399+idle*(.03+i%4*.008),r=(.15+(i%113)/113*4.5)*birth;positions[i*3]=Math.sin(a)*r;positions[i*3+1]=-.7+((i*.017+idle*.08)%4.8)*birth;positions[i*3+2]=Math.cos(a)*r*.6}dustGeo.attributes.position.needsUpdate=true;dustMat.opacity=birth*.85
