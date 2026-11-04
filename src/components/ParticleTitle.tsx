@@ -1,10 +1,13 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import './particle-title.css'
+import type { PremiereWorld } from './premiere-world'
 
 type Point = { x:number; y:number; sx:number; sy:number; z:number; delay:number; size:number }
 export function ParticleTitle() {
   const host=useRef<HTMLDivElement>(null), canvas=useRef<HTMLCanvasElement>(null), heading=useRef<HTMLHeadingElement>(null)
+  const worldHost=useRef<HTMLDivElement>(null)
+  const [fallback,setFallback]=useState(false)
   const trigger=useRef<()=>void>(()=>{})
   const [phase,setPhase]=useState<'waiting'|'forming'|'complete'>('waiting')
   useLayoutEffect(()=>{
@@ -12,6 +15,8 @@ export function ParticleTitle() {
     const ctx=surface.getContext('2d')
     let timeline:gsap.core.Timeline|undefined, started=false, done=false, disposed=false
     let w=0,h=0,points:Point[]=[]
+    let world:PremiereWorld|undefined,raf=0,playhead=0,ambient=0,last=0
+    let visible=true
     const frame={t:0}, reduce=matchMedia('(prefers-reduced-motion: reduce)')
     const sprites=['255,204,133','178,114,255'].map(rgb=>{const c=document.createElement('canvas');c.width=c.height=48;const x=c.getContext('2d')!;const g=x.createRadialGradient(24,24,0,24,24,24);g.addColorStop(0,'#fff5de');g.addColorStop(.12,`rgba(${rgb},.95)`);g.addColorStop(.4,`rgba(${rgb},.25)`);g.addColorStop(1,`rgba(${rgb},0)`);x.fillStyle=g;x.fillRect(0,0,48,48);return c})
     function size(){w=el.clientWidth;h=el.clientHeight;const d=Math.min(devicePixelRatio,1.5);surface.width=w*d;surface.height=h*d;ctx?.setTransform(d,0,0,d,0,0)}
@@ -38,33 +43,52 @@ export function ParticleTitle() {
       }
       for(const p of points){const progress=gsap.utils.clamp(0,1,(t-.5-p.delay)/4.7),ease=1-Math.pow(1-progress,3),r=1-ease,projection=1/(1+p.z*r*.55)
         let x=p.sx+(p.x-p.sx)*ease+Math.sin(progress*Math.PI)*r*160*Math.sin(p.delay*6),y=p.sy+(p.y-p.sy)*ease-Math.sin(progress*Math.PI)*r*180
-        x=w/2+(x-w/2)*projection;y=h/2+(y-h/2)*projection
+        x=w/2+(x-w/2)*projection*Math.min(1,t/1.1);y=h/2+(y-h/2)*projection*Math.min(1,t/1.1)
         const radius=(p.size*(2+3*r)+p.z*r*12)*projection
         ctx.globalAlpha=Math.min(1,t*.8)*fade*(.65+.25*Math.sin(p.delay*8+t));ctx.drawImage(sprites[p.z>1.6?1:0],x-radius/2,y-radius/2,radius,radius)
         if(progress>.7){ctx.fillStyle='#ffe2a5';ctx.globalAlpha=fade*ease;ctx.fillRect(x,y,1.3,1.3)}
       }ctx.restore()
     }
-    function finish(){if(!started)return;done=true;timeline?.kill();setPhase('complete');gsap.set(title,{opacity:1,clearProps:'filter,transform'});if(ctx&&!reduce.matches){frame.t=8.8;draw()}}
-    function start(){if(started||disposed)return;started=true;setPhase('forming');if(reduce.matches||!ctx){finish();return}
-      void document.fonts.ready.then(()=>{if(disposed||done)return;try{sample()}catch{finish();return}
-        timeline=gsap.timeline({onComplete:finish});timeline.to(frame,{t:8.8,duration:8.8,ease:'none',onUpdate:draw},0)
-        timeline.fromTo(title,{opacity:0},{opacity:1,duration:1.5,ease:'sine.inOut'},6.8)
-      })
+    function finish(){if(!started)return;done=true;setPhase('complete');gsap.set(title,{opacity:1});frame.t=10;ctx?.clearRect(0,0,w,h);world?.update(10,0,reduce.matches)}
+    function loop(now:number){
+      raf=0;if(disposed)return
+      const delta=last?(now-last)/1000:0;last=now
+      if(visible&&!document.hidden){
+        if(!done){playhead+=delta;timeline?.totalTime(playhead)}
+        ambient+=reduce.matches?0:delta
+        world?.update(frame.t,ambient,reduce.matches)
+      }
+      if(!reduce.matches)raf=requestAnimationFrame(loop)
     }
+    function start(){if(started||disposed)return;started=true;setPhase('forming')
+      void Promise.all([document.fonts.ready,import('./premiere-world')]).then(([,module])=>{
+        if(disposed)return
+        try{world=module.createPremiereWorld(worldHost.current!)}catch{setFallback(true)}
+        if(reduce.matches||!ctx){finish();return}
+        try{sample()}catch{finish();return}
+        timeline=gsap.timeline({paused:true,onComplete:finish})
+        timeline.to(frame,{t:10,duration:10,ease:'none',onUpdate:draw},0)
+        timeline.fromTo(title,{opacity:0},{opacity:1,duration:1.5,ease:'sine.inOut'},6.8)
+        raf=requestAnimationFrame(loop)
+      }).catch(()=>{if(!disposed){setFallback(true);finish()}})
+    }
+    function keyboard(e:KeyboardEvent){if(!started&&(e.key==='Enter'||e.key===' ')&&(e.target===document.body||el.contains(e.target as Node))){e.preventDefault();start()}}
+    window.addEventListener('keydown',keyboard)
     trigger.current=start
-    const resize=new ResizeObserver(()=>{if(started&&!done)finish();size()});resize.observe(el)
-    function motion(){if(reduce.matches&&started)finish()}
-    function visibility(){timeline?.paused(document.hidden||!visible)}
-    let visible=true;const intersection=new IntersectionObserver(([e])=>{visible=e.isIntersecting;visibility()});intersection.observe(el)
+    const resize=new ResizeObserver(()=>{size();world?.resize();if(started&&!done&&points.length)sample();if(done){ctx?.clearRect(0,0,w,h);world?.update(10,ambient,reduce.matches)}});resize.observe(el)
+    function motion(){if(reduce.matches&&started){timeline?.kill();cancelAnimationFrame(raf);raf=0;finish()}else if(started&&!raf){last=0;raf=requestAnimationFrame(loop)}}
+    function visibility(){last=0}
+    const intersection=new IntersectionObserver(([e])=>{visible=e.isIntersecting;visibility()});intersection.observe(el)
     reduce.addEventListener('change',motion);document.addEventListener('visibilitychange',visibility)
     size()
-    return()=>{disposed=true;timeline?.kill();resize.disconnect();intersection.disconnect();reduce.removeEventListener('change',motion);document.removeEventListener('visibilitychange',visibility)}
+    return()=>{disposed=true;window.removeEventListener('keydown',keyboard);timeline?.kill();cancelAnimationFrame(raf);world?.dispose();resize.disconnect();intersection.disconnect();reduce.removeEventListener('change',motion);document.removeEventListener('visibilitychange',visibility)}
   },[])
   return <div className="premiere-stage" ref={host} data-phase={phase}>
-    <div className="premiere-world" aria-hidden="true"><div className="library-depth"/><div className="library-window"/><div className="light-shaft"/><div className="violet-mist"/><svg className="enchanted-book" viewBox="0 0 1000 320"><defs><linearGradient id="page-light" x2="0" y2="1"><stop stopColor="#fff0c9"/><stop offset=".35" stopColor="#c89a68"/><stop offset="1" stopColor="#3b1e26"/></linearGradient><linearGradient id="book-cover"><stop stopColor="#20131e"/><stop offset=".5" stopColor="#885337"/><stop offset="1" stopColor="#211427"/></linearGradient><filter id="book-glow"><feGaussianBlur stdDeviation="12"/></filter></defs><ellipse cx="500" cy="252" rx="440" ry="42" fill="#020107" opacity=".8"/><path d="M65 220Q280 175 500 255Q720 175 935 220L920 255Q710 215 500 280Q290 215 80 255Z" fill="url(#book-cover)" stroke="#b78650"/><path d="M110 83Q310 30 500 220Q690 30 890 83L935 220Q710 170 500 255Q290 170 65 220Z" fill="url(#page-light)" stroke="#eec188"/>{Array.from({length:19},(_,i)=><path key={i} d={`M${108-i*2} ${92+i*6}Q300 ${48+i*6} 500 ${220+i*1.7}Q700 ${48+i*6} ${892+i*2} ${92+i*6}`} fill="none" stroke={i%3===0?'#ffdf9d':'#513023'} strokeWidth={i%3===0?1.4:.7} opacity=".6"/>)}<path d="M110 83Q310 30 500 220Q690 30 890 83" fill="none" stroke="#ffb952" strokeWidth="12" filter="url(#book-glow)"/><path d="M110 83Q310 30 500 220Q690 30 890 83" fill="none" stroke="#ffe6b1" strokeWidth="2"/></svg><div className="premiere-vignette"/></div>
+    <div className="premiere-webgl" ref={worldHost} aria-hidden="true"/>
     <h1 ref={heading} className="premiere-title" aria-label="Фразеологизмы" aria-hidden={phase!=='complete'}>{Array.from('ФРАЗЕОЛОГИЗМЫ',(letter,i)=><span data-letter key={i}>{letter}</span>)}</h1>
     <canvas ref={canvas} className="premiere-particles" aria-hidden="true"/>
-    {phase==='waiting'&&<button className="premiere-start" aria-label="Начать заставку. Нажмите Enter, пробел или коснитесь экрана" onClick={()=>trigger.current()}/>}
+    {phase==='waiting'&&<button className="premiere-start" aria-label="Начать заставку. Нажмите Enter, пробел или коснитесь экрана" onClick={()=>trigger.current()}><span className="premiere-spark"/></button>}
+    {fallback&&<p className="premiere-fallback" role="status">3D недоступно в этом браузере. Показана упрощённая заставка.</p>}
     <a className="premiere-scroll" href="#theory" tabIndex={phase==='complete'?0:-1} aria-hidden={phase!=='complete'}>Прокрути, чтобы открыть скрытый смысл слов<span aria-hidden="true">↓</span></a>
   </div>
 }

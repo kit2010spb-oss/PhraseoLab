@@ -1,20 +1,17 @@
 /* The premiere is the only section styled here. Its opening frame contains no visible UI. */
-#intro.premiere{display:block;padding:0;height:100svh;min-height:420px;max-height:none;isolation:isolate;background:#100c17;scroll-margin:0}
+#intro.premiere{display:block;padding:0;height:100svh;min-height:420px;max-height:none;isolation:isolate;background:#000;scroll-margin:0}
 header.site-header{position:fixed;top:0;left:0;width:100%}.site-header.intro-header-hidden{visibility:hidden;pointer-events:none}
-.premiere-stage{position:relative;width:100%;height:100%;overflow:hidden;background:#100c17;isolation:isolate}
-.premiere-world{position:absolute;inset:0;opacity:0;transform:scale(1.08);transition:opacity 3s ease,transform 8s cubic-bezier(.2,.5,.2,1);background:radial-gradient(ellipse at 50% 65%,#58305766,transparent 55%),linear-gradient(110deg,#281b26,#120f21 60%,#23142c)}
-.premiere-stage:not([data-phase=waiting]) .premiere-world{opacity:1;transform:scale(1)}
-.library-depth{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 115px,#0b0814 119px 128px, #ad79472b 130px,transparent 134px),repeating-linear-gradient(90deg,#2e2030 0 12px,#7e4c362b 14px 22px,#100d1c 24px 38px,#4d374432 40px 51px);filter:blur(8px);opacity:.5;transform:perspective(900px) rotateY(-7deg) scale(1.1);mask-image:linear-gradient(90deg,#000,transparent 43%,#000)}
-.library-window{position:absolute;left:-4%;top:2%;width:24%;height:73%;border:15px solid #402936;border-radius:50% 50% 0 0;background:repeating-linear-gradient(90deg,transparent 0 23%,#422639 24% 27%),repeating-linear-gradient(0deg,transparent 0 22%,#422639 23% 25%),linear-gradient(130deg,#f9c78f,#a67a9b 45%,#56345b);box-shadow:0 0 80px #f2b16a44,inset 0 0 60px #ffe8c9;filter:blur(4px);opacity:.55;transform:perspective(800px) rotateY(22deg)}
-.light-shaft{position:absolute;inset:-20%;background:conic-gradient(from 96deg at 12% 18%,transparent,#ffcc8b16 10deg,transparent 22deg,#ffcc8b0b 35deg,transparent 45deg);filter:blur(16px)}
-.violet-mist{position:absolute;inset:20% -15% 0;background:radial-gradient(ellipse at 65% 58%,#9d49df38,transparent 40%),radial-gradient(ellipse at 35% 75%,#f3a25324,transparent 30%);filter:blur(26px)}
-.enchanted-book{position:absolute;width:min(1000px,80vw);height:auto;left:50%;bottom:5%;transform:translateX(-50%) perspective(900px) rotateX(16deg);filter:drop-shadow(0 -15px 35px #ffb15b22)}
-.premiere-vignette{position:absolute;inset:0;background:radial-gradient(ellipse,transparent 15%,#07040e99 100%),linear-gradient(0deg,#100917aa,transparent 35%)}
-#intro .premiere-title{position:absolute;z-index:2;left:0;top:42%;transform:translateY(-50%);width:100%;margin:0;padding:0;text-align:center;font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:clamp(29px,7.55vw,150px);letter-spacing:-.055em;line-height:1.2;white-space:nowrap;opacity:0;color:#edc58c;background:linear-gradient(165deg,#fff6d8 8%,#c48a53 28%,#ffe3ad 43%,#af724e 62%,#f7d8aa 78%,#a96b68);background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 1px #3c1726) drop-shadow(0 0 22px #d59b4f33)}
+.premiere-stage{position:relative;width:100%;height:100%;overflow:hidden;background:#000;isolation:isolate}
+.premiere-webgl{position:absolute;inset:0;pointer-events:auto}.premiere-webgl canvas{display:block;width:100%;height:100%}
+#intro .premiere-title{position:absolute;z-index:2;left:0;top:28%;transform:translateY(-50%);width:100%;margin:0;padding:0;text-align:center;font-family:Georgia,'Times New Roman',serif;font-weight:400;font-size:clamp(29px,7.55vw,150px);letter-spacing:-.055em;line-height:1.2;white-space:nowrap;opacity:0;color:#edc58c;background:linear-gradient(165deg,#fff6d8 8%,#c48a53 28%,#ffe3ad 43%,#af724e 62%,#f7d8aa 78%,#a96b68);background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 1px #3c1726) drop-shadow(0 0 22px #d59b4f33)}
 .premiere-title [data-letter]{display:inline}
 .premiere-particles{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
 .premiere-start{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent;z-index:5;cursor:pointer}.premiere-start:focus-visible{outline:1px solid #e7ba7d;outline-offset:-12px}
-.premiere-scroll{position:absolute;left:10%;right:10%;bottom:5%;z-index:4;text-align:center;color:#efcfb5;font-size:12px;letter-spacing:.5px;line-height:1.6;opacity:0;pointer-events:none;transition:opacity 1.3s}.premiere-scroll span{display:block;font-size:24px;margin-top:10px;color:#d7a16b}
+.premiere-scroll{position:absolute;left:10%;right:10%;bottom:3%;z-index:4;text-align:center;color:#efcfb5;font-size:12px;letter-spacing:.5px;line-height:1.6;opacity:0;pointer-events:none;transition:opacity 1.3s}.premiere-scroll span{display:block;font-size:24px;margin-top:10px;color:#d7a16b}
 .premiere-stage[data-phase=complete] .premiere-scroll{opacity:1;pointer-events:auto}
-@media(max-width:700px){#intro.premiere{min-height:380px}.library-window{width:40%;left:-15%;height:62%;top:12%}.enchanted-book{width:115vw;bottom:15%}.premiere-scroll{font-size:10px;bottom:7%}#intro .premiere-title{font-size:7.7vw;top:43%}}
-@media(prefers-reduced-motion:reduce){.premiere-world,.premiere-scroll{transition:none}.premiere-world{transform:none}.premiere-particles{display:none}}
+@media(max-width:700px){#intro.premiere{min-height:380px}.premiere-scroll{font-size:10px;bottom:6%}#intro .premiere-title{font-size:7.7vw;top:30%}}
+.premiere-start{inset:auto;left:50%;top:50%;width:72px;height:72px;transform:translate(-50%,-50%);border-radius:50%}
+.premiere-spark{display:block;width:7px;height:7px;margin:auto;border-radius:50%;background:#fff1d2;box-shadow:0 0 12px 3px #ffc77688,0 0 32px 10px #b96e4e33;animation:premiere-breathe 3s ease-in-out infinite}
+@keyframes premiere-breathe{50%{box-shadow:0 0 18px 4px #ffc77688,0 0 38px 12px #b96e4e33}}
+.premiere-fallback{position:absolute;bottom:15%;width:100%;text-align:center;color:#dcb89a;font-size:12px}
+@media(prefers-reduced-motion:reduce){.premiere-scroll{transition:none}.premiere-spark{animation:none}.premiere-particles{display:none}}
