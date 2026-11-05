@@ -49,7 +49,7 @@ export function ParticleTitle() {
         if(progress>.7){ctx.fillStyle='#ffe2a5';ctx.globalAlpha=fade*ease;ctx.fillRect(x,y,1.3,1.3)}
       }ctx.restore()
     }
-    function finish(){if(!started)return;done=true;setPhase('complete');gsap.set(title,{opacity:1});frame.t=10;ctx?.clearRect(0,0,w,h);world?.update(10,0,reduce.matches)}
+    function finish(){if(!started)return;done=true;setPhase('complete');gsap.set(title,{opacity:1,'--shine-x':'-100%'});frame.t=10;ctx?.clearRect(0,0,w,h);world?.update(10,0,reduce.matches)}
     function loop(now:number){
       raf=0;if(disposed)return
       const delta=last?(now-last)/1000:0;last=now
@@ -69,6 +69,7 @@ export function ParticleTitle() {
         timeline=gsap.timeline({paused:true,onComplete:finish})
         timeline.to(frame,{t:10,duration:10,ease:'none',onUpdate:draw},0)
         timeline.fromTo(title,{opacity:0},{opacity:1,duration:1.5,ease:'sine.inOut'},6.8)
+        timeline.fromTo(title,{'--shine-x':'200%'},{'--shine-x':'-100%',duration:1.35,ease:'sine.inOut'},8.35)
         raf=requestAnimationFrame(loop)
       }).catch(()=>{if(!disposed){setFallback(true);finish()}})
     }
@@ -83,7 +84,7 @@ export function ParticleTitle() {
     size()
     return()=>{disposed=true;window.removeEventListener('keydown',keyboard);timeline?.kill();cancelAnimationFrame(raf);world?.dispose();resize.disconnect();intersection.disconnect();reduce.removeEventListener('change',motion);document.removeEventListener('visibilitychange',visibility)}
   },[])
-  return <div className="premiere-stage" ref={host} data-phase={phase}>
+  return <div className="premiere-stage" ref={host} data-phase={phase} data-intro-version="cinematic-2">
     <div className="premiere-webgl" ref={worldHost} aria-hidden="true"/>
     <h1 ref={heading} className="premiere-title" aria-label="Фразеологизмы" aria-hidden={phase!=='complete'}>{Array.from('ФРАЗЕОЛОГИЗМЫ',(letter,i)=><span data-letter key={i}>{letter}</span>)}</h1>
     <canvas ref={canvas} className="premiere-particles" aria-hidden="true"/>

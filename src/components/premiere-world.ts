@@ -184,6 +184,21 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
  }
  consolidateBookDetails(spineDetails)
  const gutter=mesh(new T.PlaneGeometry(.1,2.86),new T.MeshStandardMaterial({color:'#ffcc79',emissive:'#ffb84a',emissiveIntensity:1.3,transparent:true,opacity:.3,side:T.DoubleSide}),book,0,.235,0);gutter.rotation.x=-Math.PI/2
+ // One inexpensive local light volume. Its envelope follows the existing playhead.
+ const rayUniforms={time:{value:0},strength:{value:0},burst:{value:0}}
+ const rayMaterial=new T.ShaderMaterial({uniforms:rayUniforms,transparent:true,depthWrite:false,side:T.DoubleSide,blending:T.AdditiveBlending,
+  vertexShader:`varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`varying vec2 vUv;uniform float time;uniform float strength;uniform float burst;
+   void main(){
+    float y=vUv.y,x=(vUv.x-.5)*2.;float angle=atan(x,y+.08);
+    float cone=exp(-pow(x/(.10+y*.72),2.)*2.3);
+    float shafts=pow(.5+.5*sin(angle*38.+sin(time*.35+angle*7.)*.6),9.);
+    float edge=smoothstep(0.,.07,y)*(1.-smoothstep(.3,1.,y));
+    float alpha=cone*edge*(.12+shafts*.55)*strength;
+    vec3 color=mix(vec3(1.,.62,.24),vec3(.67,.32,.83),abs(x)*burst*.5);
+    gl_FragColor=vec4(color,alpha*(1.+burst*.65));
+   }`})
+ const lightRays=new T.Mesh(new T.PlaneGeometry(4.2,2.4),rayMaterial);lightRays.position.set(0,1.45,.1);book.add(lightRays)
  const turning:{mesh:T.Mesh;offset:number}[]=[]
  for(let n=0;n<3;n++){const g=new T.PlaneGeometry(2.65,2.88,42,12);const page=mesh(g,papers[(n+1)%4],book);turning.push({mesh:page,offset:n*.38})}
  const floor=mesh(new T.CircleGeometry(12,64),new T.ShadowMaterial({color:'#100517',opacity:.3}),scene,0,-1.55,0);floor.rotation.x=-Math.PI/2
@@ -243,17 +258,25 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
  function leave(){pointer.set(0,0)}host.addEventListener('pointermove',move);host.addEventListener('pointerleave',leave);resize()
  const smooth=(a:number,b:number,t:number)=>{const u=T.MathUtils.clamp((t-a)/(b-a),0,1);return u*u*(3-2*u)}
  return {resize,update(t,ambient,reduced){if(disposed)return;host.dataset.sceneTime=t.toFixed(2);const start=performance.now(),open=smooth(2.2,6.2,t),birth=smooth(.4,3.5,t),objects=smooth(5,8.8,t),idle=reduced?0:ambient
-   root.visible=t>0;scene.background=new T.Color('#160a25').multiplyScalar(birth);hemisphere.intensity=.7*birth;front.intensity=16*birth;pink.intensity=9*birth;warm.intensity=(1.5+3*open)*birth
-   camera.position.set((reduced?0:pointer.x*.18),2.9+(1-birth)*1.5, w/h<1?15.5:9.5+(1-birth)*2);camera.lookAt(0,.55,0)
+   const burst=reduced?0:Math.sin(Math.PI*smooth(5.9,6.85,t)),settle=smooth(7,9.5,t)
+   rayUniforms.time.value=idle;rayUniforms.burst.value=burst;rayUniforms.strength.value=open*(reduced?.12:.65-settle*.48+burst*.28)
+   lightRays.visible=open>.01
+   root.visible=t>0;scene.background=new T.Color('#160a25').multiplyScalar(birth);hemisphere.intensity=.7*birth;front.intensity=16*birth;pink.intensity=9*birth;warm.intensity=(1.5+3*open+burst*2.5)*birth
+   ;(gutter.material as T.MeshStandardMaterial).emissiveIntensity=1.3+burst*.9
+   camera.position.set((reduced?0:pointer.x*.18),2.9+(1-birth)*1.5, w/h<1?Math.max(15.5,11/(w/h)):9.5+(1-birth)*2);camera.lookAt(0,.55,0)
    root.rotation.y=T.MathUtils.lerp(root.rotation.y,reduced?0:pointer.x*.055,.05)
    book.position.y=-.85-(1-birth)*2.5;book.rotation.y=(1-birth)*-.35+Math.sin(idle*.2)*.015
    halves[0].rotation.z=-(1-open)*1.48;halves[1].rotation.z=(1-open)*1.48
    turning.forEach(({mesh:page,offset})=>{const stamp=Math.min(t,8);if(page.userData.stamp===stamp)return;page.userData.stamp=stamp;const turn=smooth(4+offset,6.2+offset,t),angle=turn*Math.PI,attr=page.geometry.attributes.position
-    for(let i=0;i<attr.count;i++){const u=(i%43)/42,v=Math.floor(i/43)/12;page.geometry.attributes.uv.setXY(i,Math.cos(angle)<0?1-u:u,1-v);const bend=Math.sin(u*Math.PI)*Math.sin(angle)*.55;attr.setXYZ(i,Math.cos(angle)*u*2.65,.22+Math.sin(angle)*u*2.65+bend+.15*Math.sin(u*Math.PI),(v-.5)*2.88)}page.geometry.attributes.uv.needsUpdate=true;page.geometry.computeVertexNormals();page.visible=t>3.4;})
+    for(let i=0;i<attr.count;i++){const u=(i%43)/42,v=Math.floor(i/43)/12;page.geometry.attributes.uv.setXY(i,Math.cos(angle)<0?1-u:u,1-v);const bend=Math.sin(u*Math.PI)*Math.sin(angle)*.55;attr.setXYZ(i,Math.cos(angle)*u*2.65,.22+Math.sin(angle)*u*2.65+bend+.15*Math.sin(u*Math.PI),(v-.5)*2.88)}attr.needsUpdate=true;page.geometry.attributes.uv.needsUpdate=true;page.geometry.computeVertexNormals();page.geometry.computeBoundingSphere();page.visible=t>3.4&&turn<.999;})
    motifs.forEach((g,i)=>{const target=g.userData.target as T.Vector3,p=smooth(5+i*.25,8.4+i*.12,t);g.position.copy(target).multiplyScalar(p);g.position.y+=(-.7)*(1-p)+Math.sin(idle*.5+i)*.045*p;g.scale.setScalar(Math.max(.001,p));g.rotation.set(Math.sin(idle*.2+i)*.08,Math.sin(idle*.25+i)*.18,(i%2?1:-1)*.15+(1-p)*1.5)})
-   ribbons.forEach((o,i)=>{o.scale.setScalar(Math.max(.001,objects));o.rotation.y=Math.sin(idle*.1+i)*.06;(o.material as T.MeshStandardMaterial).opacity=.2+objects*.25})
-   for(let i=0;i<count;i++){const a=i*2.399+idle*(.03+i%4*.008),r=(.15+(i%113)/113*4.5)*birth;positions[i*3]=Math.sin(a)*r;positions[i*3+1]=-.7+((i*.017+idle*.08)%4.8)*birth;positions[i*3+2]=Math.cos(a)*r*.6}dustGeo.attributes.position.needsUpdate=true;dustMat.opacity=birth*.85
-   jewel.rotation.z=idle*.08;cloudMeshes.forEach((o,i)=>{o.position.x=Math.sin(idle*.04+i)*.4;(o.material as T.MeshBasicMaterial).opacity=birth*.65})
+   ribbons.forEach((o,i)=>{o.scale.setScalar(Math.max(.001,objects));o.rotation.y=Math.sin(idle*.1+i)*.06;o.position.z=-1.4;o.position.y=-.25;(o.material as T.MeshStandardMaterial).opacity=objects*(.23-settle*.09+burst*.06)})
+   for(let i=0;i<count;i++){
+    const a=i*2.399+idle*(.03+i%4*.008),r=(.15+(i%113)/113*4.5)*birth
+    if(i%3===0){const life=(i*.017+idle*.1)%1,spread=.1+life*1.5;positions[i*3]=Math.sin(a)*spread*open;positions[i*3+1]=-.55+life*2.7*open;positions[i*3+2]=.3+Math.cos(a)*spread*.45;}
+    else{positions[i*3]=Math.sin(a)*r;positions[i*3+1]=-.7+((i*.017+idle*.08)%4.8)*birth;positions[i*3+2]=Math.cos(a)*r*.6}
+   }dustGeo.attributes.position.needsUpdate=true;dustMat.opacity=birth*(.55+open*.15+burst*.15)
+   jewel.rotation.z=idle*.08;cloudMeshes.forEach((o,i)=>{o.position.x=Math.sin(idle*.04+i)*.55;o.rotation.z=Math.sin(idle*.025+i)*.035;const m=o.material as T.MeshBasicMaterial;m.opacity=birth*(.4+open*.1+Math.sin(idle*.06+i)*.025);m.color.setHSL(.82+Math.sin(idle*.03+i)*.015,.22,.7)})
    composer.render();if(performance.now()-start>45)slow++;if(slow>35&&quality>.7){quality=.7;renderer.setPixelRatio(quality);composer.setPixelRatio(quality);dustGeo.setDrawRange(0,Math.min(count,500));resize();slow=0}
   },dispose(){disposed=true;host.removeEventListener('pointermove',move);host.removeEventListener('pointerleave',leave);const gs=new Set<T.BufferGeometry>(),ms=new Set<T.Material>();scene.traverse(o=>{if(o instanceof T.Mesh||o instanceof T.Points){gs.add(o.geometry);(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>ms.add(m))}});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());bookEnv.dispose();env.dispose();composer.passes.forEach(pass=>pass.dispose());composer.dispose();renderer.dispose();renderer.domElement.remove()}}
 }

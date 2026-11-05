@@ -15,3 +15,6 @@ header.site-header{position:fixed;top:0;left:0;width:100%}.site-header.intro-hea
 @keyframes premiere-breathe{50%{box-shadow:0 0 18px 4px #ffc77688,0 0 38px 12px #b96e4e33}}
 .premiere-fallback{position:absolute;bottom:15%;width:100%;text-align:center;color:#dcb89a;font-size:12px}
 @media(prefers-reduced-motion:reduce){.premiere-scroll{transition:none}.premiere-spark{animation:none}.premiere-particles{display:none}}
+/* One GSAP-driven highlight; both layers stay clipped to the original lettering. */
+#intro .premiere-title{--shine-x:200%;background-image:linear-gradient(110deg,transparent 43%,#fff6d7 49%,#fff6d7 50%,transparent 57%),linear-gradient(165deg,#fff6d8 8%,#c48a53 28%,#ffe3ad 43%,#af724e 62%,#f7d8aa 78%,#a96b68);background-size:250% 100%,100% 100%;background-position:var(--shine-x) 0,0 0;background-repeat:no-repeat}
+@media(prefers-reduced-motion:reduce){#intro .premiere-title{background-image:linear-gradient(165deg,#fff6d8 8%,#c48a53 28%,#ffe3ad 43%,#af724e 62%,#f7d8aa 78%,#a96b68);background-size:100% 100%;background-position:0 0}}

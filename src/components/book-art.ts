@@ -50,10 +50,10 @@ export function createLeatherMaps() {
 }
 
 export const bookChapters = [
-  { title: ['Подобрать ключ', 'к сердцу'], subtitle: 'ИСКУССТВО ПОНИМАТЬ', caption: 'Доверие открывает невидимые двери.' },
-  { title: ['Витать', 'в облаках'], subtitle: 'АТЛАС ВООБРАЖЕНИЯ', caption: 'Там, где мысль становится полётом.' },
-  { title: ['Дело', 'в шляпе'], subtitle: 'МАЛЕНЬКОЕ ТОРЖЕСТВО', caption: 'Когда всё удалось.' },
-  { title: ['Золотые', 'руки'], subtitle: 'МАСТЕРСТВО И ТАЛАНТ', caption: 'Красота рождается в умелых руках.' },
+  { title: ['Слово'], subtitle: 'СМЫСЛ', caption: 'Искусство понимать' },
+  { title: ['Образ'], subtitle: 'ВООБРАЖЕНИЕ', caption: 'За пределами букв' },
+  { title: ['История'], subtitle: 'ПАМЯТЬ ЯЗЫКА', caption: 'Сквозь время' },
+  { title: ['Значение'], subtitle: 'МАСТЕРСТВО', caption: 'Искусство слова' },
 ]
 
 /** Original book engravings, drawn locally at print-like resolution. No remote assets. */
@@ -85,7 +85,7 @@ export function createBookArt(kind: 'cover' | 'grain' | number): T.CanvasTexture
   } else if(typeof kind==='number') {
     const chapter=bookChapters[kind]
     x.textAlign='center';x.fillStyle='#805337';x.font='28px Georgia';x.fillText(chapter.subtitle,768,182)
-    x.fillStyle='#381022';x.font='italic 164px Georgia';chapter.title.forEach((t,i)=>x.fillText(t,768,325+i*174))
+    x.fillStyle='#381022';x.font='italic 184px Georgia';chapter.title.forEach((t,i)=>x.fillText(t,768,425+i*174))
     line(()=>{x.moveTo(510,545);x.bezierCurveTo(670,520,850,570,1026,545)},'#b88745',2)
     x.save();x.translate(768,790)
     const ink='#80543b';const goldPaint=x.createLinearGradient(-180,-200,160,240);goldPaint.addColorStop(0,'#fff2bb');goldPaint.addColorStop(.35,'#b47a2f');goldPaint.addColorStop(.55,'#f3d27a');goldPaint.addColorStop(1,'#93602d')
