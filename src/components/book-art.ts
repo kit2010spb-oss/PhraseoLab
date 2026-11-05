@@ -1,5 +1,54 @@
 import * as T from 'three'
 
+/** Book-only PBR maps. Green/blue share roughness/metalness to avoid a fourth texture. */
+export function createLeatherMaps() {
+  const size = 1024
+  const canvas = () => { const c = document.createElement('canvas'); c.width = c.height = size; return c }
+  const color = canvas(), height = canvas(), surface = canvas()
+  const context = color.getContext('2d')!
+  const artwork = createBookArt('cover')
+  context.drawImage(artwork.image, 0, 0, size, size)
+  artwork.dispose()
+  const pigment = context.getImageData(0, 0, size, size)
+  const relief = height.getContext('2d')!.createImageData(size, size)
+  const finish = surface.getContext('2d')!.createImageData(size, size)
+  let seed = 317
+  const random = () => { seed = seed * 16807 % 2147483647; return seed / 2147483647 }
+  const field = (cells: number) => {
+    const data = Float32Array.from({ length: (cells + 1) ** 2 }, random)
+    return (x: number, y: number) => {
+      const u = x / size * cells, v = y / size * cells, ix = Math.floor(u), iy = Math.floor(v)
+      const fx = u - ix, fy = v - iy, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy)
+      const a = iy * (cells + 1) + ix
+      return T.MathUtils.lerp(T.MathUtils.lerp(data[a], data[a + 1], sx), T.MathUtils.lerp(data[a + cells + 1], data[a + cells + 2], sx), sy)
+    }
+  }
+  const broad = field(9), pores = field(210), folds = field(43)
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const i = (y * size + x) * 4, r = pigment.data[i], g = pigment.data[i + 1], b = pigment.data[i + 2]
+    const foil = T.MathUtils.smoothstep(g - b, 12, 40)
+    const grain = pores(x, y), cloud = broad(x, y)
+    const crease = 1 - T.MathUtils.smoothstep(Math.abs(folds(x, y) - .5), .015, .085)
+    const edge = 1 - T.MathUtils.smoothstep(Math.min(x, y, size - 1 - x, size - 1 - y), 0, 35)
+    const shade = .72 + cloud * .36 + grain * .12 - crease * .07
+    pigment.data[i] = T.MathUtils.lerp(69 * shade + edge * 9, r, foil)
+    pigment.data[i + 1] = T.MathUtils.lerp(21 * shade + edge * 3, g, foil)
+    pigment.data[i + 2] = T.MathUtils.lerp(65 * shade + edge * 7, b, foil)
+    const h = 128 + (grain - .5) * 63 - crease * 20 + foil * 20
+    relief.data[i] = relief.data[i + 1] = relief.data[i + 2] = h; relief.data[i + 3] = 255
+    finish.data[i] = 255
+    finish.data[i + 1] = T.MathUtils.lerp(142 + (grain - .5) * 34 - edge * 22, 70, foil)
+    finish.data[i + 2] = foil * 245; finish.data[i + 3] = 255
+  }
+  context.putImageData(pigment, 0, 0)
+  height.getContext('2d')!.putImageData(relief, 0, 0)
+  surface.getContext('2d')!.putImageData(finish, 0, 0)
+  const map = new T.CanvasTexture(color), bumpMap = new T.CanvasTexture(height), finishMap = new T.CanvasTexture(surface)
+  map.colorSpace = T.SRGBColorSpace
+  bumpMap.colorSpace = finishMap.colorSpace = T.NoColorSpace
+  return { map, bumpMap, finishMap }
+}
+
 export const bookChapters = [
   { title: ['Подобрать ключ', 'к сердцу'], subtitle: 'ИСКУССТВО ПОНИМАТЬ', caption: 'Доверие открывает невидимые двери.' },
   { title: ['Витать', 'в облаках'], subtitle: 'АТЛАС ВООБРАЖЕНИЯ', caption: 'Там, где мысль становится полётом.' },

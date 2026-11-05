@@ -1,10 +1,63 @@
 import * as T from 'three'
-import { createBookArt } from './book-art'
+import { createBookArt, createLeatherMaps } from './book-art'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+
+// A single, static reflection capture, assigned only to the binding and gemstone.
+// These softboxes never enter the visible scene or illuminate the other objects.
+function bookReflections(renderer:T.WebGLRenderer) {
+ const studio=new T.Scene();studio.background=new T.Color('#89748d')
+ const panel=(width:number,height:number,position:T.Vector3,color:T.Color)=>{
+  const p=new T.Mesh(new T.PlaneGeometry(width,height),new T.MeshBasicMaterial({color,side:T.DoubleSide}))
+  p.position.copy(position);p.lookAt(0,0,0);studio.add(p)
+ }
+ panel(2.5,6,new T.Vector3(-4,3,5),new T.Color().setRGB(5,3.7,2.6))
+ panel(1,5,new T.Vector3(4,1,3),new T.Color().setRGB(2.2,1.8,3.5))
+ panel(4,2,new T.Vector3(0,5,-2),new T.Color().setRGB(3.5,3,2.5))
+ panel(6,2,new T.Vector3(0,-2,5),new T.Color().setRGB(2.8,2.3,1.9))
+ panel(.65,4,new T.Vector3(-1,-1,5),new T.Color().setRGB(4,3.3,5))
+ const generator=new T.PMREMGenerator(renderer),target=generator.fromScene(studio,.035,.1,30,{size:128})
+ studio.traverse(o=>{if(o instanceof T.Mesh){o.geometry.dispose();(o.material as T.Material).dispose()}})
+ generator.dispose();return target
+}
+
+function amethystGeometry() {
+ // Oval brilliant cut: table, alternating star/kite facets, a girdle and pavilion.
+ const vertices:number[]=[]
+ const vertex=(i:number,n:number,r:number,z:number)=>{const a=i/n*Math.PI*2;return new T.Vector3(Math.sin(a)*r,Math.cos(a)*r*1.15,z)}
+ const table=Array.from({length:8},(_,i)=>vertex(i,8,.09,.18))
+ const stars=Array.from({length:8},(_,i)=>vertex(i+.5,8,.16,.125))
+ const edge=Array.from({length:16},(_,i)=>vertex(i,16,.235,.015))
+ const back=Array.from({length:16},(_,i)=>vertex(i,16,.23,-.015))
+ const face=(a:T.Vector3,b:T.Vector3,c:T.Vector3)=>vertices.push(...a.toArray(),...b.toArray(),...c.toArray())
+ for(let i=0;i<8;i++){
+  const next=(i+1)%8,previous=(i+7)%8,k=i*2
+  face(new T.Vector3(0,0,.18),table[next],table[i])
+  face(table[i],table[next],stars[i])
+  face(table[i],stars[i],edge[k]);face(table[i],edge[k],stars[previous])
+  face(stars[i],edge[(k+2)%16],edge[k+1]);face(stars[i],edge[k+1],edge[k])
+ }
+ for(let i=0;i<16;i++){
+  const next=(i+1)%16
+  face(edge[i],edge[next],back[i]);face(edge[next],back[next],back[i])
+  face(back[i],back[next],new T.Vector3(0,0,-.15))
+ }
+ const geometry=new T.BufferGeometry();geometry.setAttribute('position',new T.Float32BufferAttribute(vertices,3));geometry.computeVertexNormals();return geometry
+}
+
+// Filigree is authored as small parts but rendered as one mesh per material/hinge.
+function consolidateBookDetails(group:T.Group) {
+ const batches=new Map<T.Material,T.BufferGeometry[]>(),originals=new Set<T.BufferGeometry>()
+ group.children.forEach(o=>{if(o instanceof T.Mesh){o.updateMatrix();const geometry=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();geometry.applyMatrix4(o.matrix)
+  const material=o.material as T.Material;const batch=batches.get(material)||[];batch.push(geometry);batches.set(material,batch);originals.add(o.geometry)
+ }})
+ group.clear();originals.forEach(g=>g.dispose())
+ batches.forEach((geometries,material)=>{const merged=mergeGeometries(geometries);geometries.forEach(g=>g.dispose());if(merged){const part=new T.Mesh(merged,material);part.castShadow=true;part.receiveShadow=true;group.add(part)}})
+}
 
 export type PremiereWorld={update:(time:number,ambient:number,reduced:boolean)=>void;resize:()=>void;dispose:()=>void}
 export function createPremiereWorld(host:HTMLElement):PremiereWorld {
@@ -20,7 +73,6 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
  const composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));const bloom=new UnrealBloomPass(new T.Vector2(1,1),.28,.5,1.8);composer.addPass(bloom);composer.addPass(new OutputPass())
  const root=new T.Group();scene.add(root)
  const gold=new T.MeshStandardMaterial({color:'#e7b455',metalness:.95,roughness:.22})
- const leather=new T.MeshStandardMaterial({color:'#351149',roughness:.34,metalness:.22})
  const glow=new T.MeshStandardMaterial({color:'#ffc774',emissive:'#ff9b38',emissiveIntensity:2.6})
  const textures:T.Texture[]=[]
  const mesh=(g:T.BufferGeometry,m:T.Material,parent:T.Object3D,x=0,y=0,z=0)=>{const o=new T.Mesh(g,m);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o}
@@ -50,40 +102,87 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
  }
  const bookTexture=(kind:'cover'|'grain'|number)=>{const t=createBookArt(kind);t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());textures.push(t);return t}
  const grain=bookTexture('grain')
- const coverMat=new T.MeshPhysicalMaterial({map:bookTexture('cover'),bumpMap:grain,bumpScale:.012,roughness:.38,metalness:.12,clearcoat:.35,clearcoatRoughness:.3})
+ const bindingMaps=createLeatherMaps();Object.values(bindingMaps).forEach(t=>{t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());textures.push(t)})
+ const bookEnv=bookReflections(renderer)
+ const coverMat=new T.MeshPhysicalMaterial({map:bindingMaps.map,bumpMap:bindingMaps.bumpMap,bumpScale:.018,roughness:1,roughnessMap:bindingMaps.finishMap,metalness:1,metalnessMap:bindingMaps.finishMap,clearcoat:.24,clearcoatRoughness:.34,envMap:bookEnv.texture,envMapIntensity:.65})
+ const spineMat=new T.MeshPhysicalMaterial({color:'#3e123c',bumpMap:bindingMaps.bumpMap,bumpScale:.014,roughness:.48,clearcoat:.3,clearcoatRoughness:.32,envMap:bookEnv.texture,envMapIntensity:.65})
  const papers=[0,1,2,3].map(i=>new T.MeshStandardMaterial({map:bookTexture(i),color:'#dec6a3',roughness:.83,envMapIntensity:.3,bumpMap:grain,bumpScale:.002,side:T.DoubleSide,emissive:'#c77b29',emissiveIntensity:.035}))
  const edges=[0,1,2].map(i=>new T.MeshStandardMaterial({color:['#d3aa63','#dcb775','#c8a15e'][i],roughness:.54,metalness:.32,side:T.DoubleSide}))
- const bookGold=new T.MeshStandardMaterial({color:'#f2c366',metalness:.94,roughness:.19})
+ const bookGold=new T.MeshStandardMaterial({color:'#e6bb70',metalness:1,roughness:.24,envMap:bookEnv.texture,envMapIntensity:1.1})
+ const antiqueGold=new T.MeshStandardMaterial({color:'#ad7f3e',metalness:1,roughness:.35,envMap:bookEnv.texture,envMapIntensity:.85})
  const book=new T.Group();book.position.set(0,-.85,.3);book.scale.setScalar(1.3);root.add(book)
  const halves:T.Group[]=[]
  for(const side of [-1,1]){
   const half=new T.Group();book.add(half);halves.push(half)
-  mesh(new T.BoxGeometry(2.8,.15,3.1),coverMat,half,side*1.4,-.14,0)
-  for(const z of [-1.53,1.53]){mesh(new T.BoxGeometry(2.8,.07,.055),gold,half,side*1.4,-.07,z)}
-  mesh(new T.BoxGeometry(.065,.1,3.08),gold,half,side*2.78,-.07,0)
+  const outline=new T.Shape(),rw=1.355,rh=1.505,r=.09
+  outline.moveTo(-rw+r,-rh);outline.lineTo(rw-r,-rh);outline.quadraticCurveTo(rw,-rh,rw,-rh+r);outline.lineTo(rw,rh-r);outline.quadraticCurveTo(rw,rh,rw-r,rh);outline.lineTo(-rw+r,rh);outline.quadraticCurveTo(-rw,rh,-rw,rh-r);outline.lineTo(-rw,-rh+r);outline.quadraticCurveTo(-rw,-rh,-rw+r,-rh)
+  const binding=new T.ExtrudeGeometry(outline,{depth:.12,steps:1,bevelEnabled:true,bevelThickness:.045,bevelSize:.045,bevelSegments:3,curveSegments:8})
+  binding.rotateX(-Math.PI/2)
+  const bindingUV=binding.attributes.uv,bindingPos=binding.attributes.position
+  for(let i=0;i<bindingPos.count;i++)bindingUV.setXY(i,(bindingPos.getX(i)+1.4)/2.8,(bindingPos.getZ(i)+1.55)/3.1)
+  mesh(binding,coverMat,half,side*1.4,-.23,0)
+  const tooling=new T.Group();half.add(tooling)
+  const wire=(points:T.Vector3[],radius=.006,material:T.Material=bookGold)=>mesh(new T.TubeGeometry(new T.CatmullRomCurve3(points),24,radius,5,false),material,tooling)
+  for(const z of [-1.53,1.53])for(const y of [-.225,-.075])wire([new T.Vector3(side*.08,y,z),new T.Vector3(side*1.4,y,z),new T.Vector3(side*2.68,y,z)],.012)
+  for(const y of [-.225,-.075])wire([new T.Vector3(side*2.77,y,-1.43),new T.Vector3(side*2.78,y,0),new T.Vector3(side*2.77,y,1.43)],.01)
   // Real stacked, curved sheets; each surface has a smoothly lifted gutter.
   for(let layer=0;layer<26;layer++){
    const geometry=new T.PlaneGeometry(2.67,2.89,34,10);const attr=geometry.attributes.position,uv=geometry.attributes.uv
    for(let i=0;i<attr.count;i++){const u=(attr.getX(i)+1.335)/2.67,z=attr.getY(i);attr.setXYZ(i,side*(.025+u*2.67),.02+layer*.009+.22*Math.sin(u*Math.PI)-.06*u,z);uv.setXY(i,side<0?1-u:u,1-uv.getY(i))}geometry.computeVertexNormals()
    mesh(geometry,layer===25?papers[side<0?0:1]:edges[layer%3],half)
   }
-  // Cast metal corner protectors and leaf-shaped tooling belong to the cover.
+  // Thin cast corner protectors with a recessed centre and polished border.
   for(const z of [-1.44,1.44]){
    const plate=new T.Shape();plate.moveTo(0,0);plate.lineTo(.42,0);plate.quadraticCurveTo(.2,.08,.15,.3);plate.lineTo(0,.42);plate.closePath()
-   const corner=mesh(new T.ExtrudeGeometry(plate,{depth:.025,bevelEnabled:true,bevelSize:.014,bevelThickness:.012,bevelSegments:3}),bookGold,half,side*2.72,-.04,z)
+   const corner=mesh(new T.ExtrudeGeometry(plate,{depth:.018,bevelEnabled:true,bevelSize:.01,bevelThickness:.008,bevelSegments:2}),antiqueGold,tooling,side*2.72,-.04,z)
    corner.rotation.x=-Math.PI/2;corner.rotation.z=side<0?(z<0?0:-Math.PI/2):(z<0?Math.PI/2:Math.PI)
+   const border=mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(.025,.36,.026),new T.Vector3(.025,.025,.026),new T.Vector3(.36,.025,.026)]),20,.008,6),bookGold,tooling)
+   border.position.copy(corner.position);border.rotation.copy(corner.rotation)
+   const scroll=mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(.05,.06,.027),new T.Vector3(.19,.06,.027),new T.Vector3(.21,.11,.027),new T.Vector3(.14,.15,.027),new T.Vector3(.1,.1,.027),new T.Vector3(.14,.085,.027)]),24,.005,5),bookGold,tooling)
+   scroll.position.copy(corner.position);scroll.rotation.copy(corner.rotation)
   }
-  for(let j=0;j<11;j++){
-   const px=side*(.2+j*.23),curve:T.Vector3[]=[]
-   for(let k=0;k<22;k++){const a=k/21*Math.PI*1.7;curve.push(new T.Vector3(px+side*Math.sin(a)*.13,-.11+Math.cos(a)*.035,1.566))}tube(curve,.009,bookGold,half)
-   for(const direction of [-1,1]){const leaf=new T.Shape();leaf.moveTo(0,0);leaf.bezierCurveTo(.08,.08,.16,.04,.17,0);leaf.bezierCurveTo(.08,-.055,.025,-.035,0,0);const l=mesh(new T.ExtrudeGeometry(leaf,{depth:.009,bevelEnabled:true,bevelSize:.004,bevelThickness:.004,bevelSegments:2}),bookGold,half,px,-.11,1.57);l.rotation.z=direction*.6+(side<0?Math.PI:0)}
+  const leaf=new T.Shape();leaf.moveTo(0,0);leaf.bezierCurveTo(.05,.045,.105,.028,.12,0);leaf.bezierCurveTo(.07,-.026,.025,-.02,0,0)
+  const leafGeometry=new T.ExtrudeGeometry(leaf,{depth:.006,bevelEnabled:true,bevelSize:.003,bevelThickness:.003,bevelSegments:1,curveSegments:4})
+  for(let j=0;j<8;j++){
+   const px=side*(.26+j*.32)
+   const stem=Array.from({length:20},(_,k)=>{const u=k/19;return new T.Vector3(px+side*u*.3,-.15+Math.sin(u*Math.PI*2)*.045,1.55)})
+   wire(stem,.006)
+   for(const direction of [-1,1]){
+    const l=mesh(leafGeometry,bookGold,tooling,px+side*.14,-.15,1.555);l.rotation.z=direction*.55+(side<0?Math.PI:0)
+    // Smaller arabesques remain readable at the front edge without a solid gold band.
+    const scroll=Array.from({length:20},(_,k)=>{const a=k/19*Math.PI*1.8,radius=.055*(1-k/25);return new T.Vector3(px+side*(.12+Math.sin(a)*radius),-.15+direction*(.02+Math.cos(a)*radius),1.556)})
+    wire(scroll,.0045)
+   }
+   // Raised tooling on both outer and inner cover faces; follows the existing hinges.
+   for(const face of [-.278,-.058]){
+    const flourish=Array.from({length:24},(_,k)=>{const u=k/23;return new T.Vector3(px+side*u*.28,face,1.35+Math.sin(u*Math.PI*2)*.045)})
+    wire(flourish,.004)
+    for(const direction of [-1,1]){const l=mesh(leafGeometry,bookGold,tooling,px+side*.14,face,1.35);l.rotation.x=-Math.PI/2;l.rotation.z=direction*.6+(side<0?Math.PI:0);l.scale.setScalar(.7)}
+   }
   }
-
+  consolidateBookDetails(tooling)
  }
- mesh(new T.CylinderGeometry(.16,.16,3.12,24),leather,book,0,-.1,0).rotation.x=Math.PI/2
- const jewel=mesh(new T.OctahedronGeometry(.235,1),new T.MeshPhysicalMaterial({color:'#ab3ac4',metalness:.18,roughness:.06,transmission:.5,thickness:.45,ior:1.8,clearcoat:1,emissive:'#6e168b',emissiveIntensity:.22}),book,0,-.05,1.66)
- mesh(new T.TorusGeometry(.28,.042,12,64),bookGold,book,0,-.05,1.6)
- for(let i=0;i<12;i++){const a=i/12*Math.PI*2;mesh(new T.SphereGeometry(.026,10,8),bookGold,book,Math.sin(a)*.28,-.05+Math.cos(a)*.28,1.63)}
+ mesh(new T.CylinderGeometry(.18,.18,3.12,32),spineMat,book,0,-.11,0).rotation.x=Math.PI/2
+ const spineDetails=new T.Group();book.add(spineDetails)
+ for(const z of [-1.38,-.78,0,.78,1.38]){
+  mesh(new T.TorusGeometry(.18,.018,8,32),spineMat,spineDetails,0,-.11,z)
+  for(const offset of [-.027,.027])mesh(new T.TorusGeometry(.181,.005,6,32),bookGold,spineDetails,0,-.11,z+offset)
+ }
+ const jewel=mesh(amethystGeometry(),new T.MeshPhysicalMaterial({color:'#c894ed',metalness:0,roughness:.045,transmission:.68,thickness:.24,ior:1.55,attenuationColor:'#74329d',attenuationDistance:.65,clearcoat:1,clearcoatRoughness:.08,envMap:bookEnv.texture,envMapIntensity:1.15}),book,0,-.05,1.66)
+ const plaque=new T.Shape();plaque.moveTo(0,.38);plaque.bezierCurveTo(.14,.3,.29,.34,.32,.16);plaque.quadraticCurveTo(.33,.04,.43,0);plaque.quadraticCurveTo(.33,-.04,.32,-.16);plaque.bezierCurveTo(.29,-.34,.14,-.3,0,-.38);plaque.bezierCurveTo(-.14,-.3,-.29,-.34,-.32,-.16);plaque.quadraticCurveTo(-.33,-.04,-.43,0);plaque.quadraticCurveTo(-.33,.04,-.32,.16);plaque.bezierCurveTo(-.29,.34,-.14,.3,0,.38)
+ const aperture=new T.Path();aperture.absellipse(0,0,.245,.282,0,Math.PI*2,true,0);plaque.holes.push(aperture)
+ mesh(new T.ExtrudeGeometry(plaque,{depth:.025,bevelEnabled:true,bevelSize:.008,bevelThickness:.008,bevelSegments:2,curveSegments:8}),antiqueGold,spineDetails,0,-.05,1.59)
+ const plaqueOutline=plaque.getSpacedPoints(64).slice(0,-1).map(p=>new T.Vector3(p.x*.96,p.y*.96,.033))
+ mesh(new T.TubeGeometry(new T.CatmullRomCurve3(plaqueOutline,true),64,.006,5,true),bookGold,spineDetails,0,-.05,1.59)
+ // Fine claws and two polished mouldings frame the transparent crown.
+ const bezel=mesh(new T.TorusGeometry(.265,.023,8,50),bookGold,spineDetails,0,-.05,1.65);bezel.scale.y=1.15
+ const outerBezel=mesh(new T.TorusGeometry(.294,.012,8,50),antiqueGold,spineDetails,0,-.05,1.61);outerBezel.scale.y=1.15
+ for(let i=0;i<10;i++){
+  const a=i/10*Math.PI*2,x=Math.sin(a),y=Math.cos(a)
+  mesh(new T.SphereGeometry(.012,8,6),bookGold,spineDetails,x*.292,-.05+y*.338,1.635)
+  if(i%2===0){const claw=mesh(new T.CapsuleGeometry(.011,.07,3,6),bookGold,spineDetails,x*.23,-.05+y*.266,1.72);claw.rotation.z=-a}
+ }
+ consolidateBookDetails(spineDetails)
  const gutter=mesh(new T.PlaneGeometry(.1,2.86),new T.MeshStandardMaterial({color:'#ffcc79',emissive:'#ffb84a',emissiveIntensity:1.3,transparent:true,opacity:.3,side:T.DoubleSide}),book,0,.235,0);gutter.rotation.x=-Math.PI/2
  const turning:{mesh:T.Mesh;offset:number}[]=[]
  for(let n=0;n<3;n++){const g=new T.PlaneGeometry(2.65,2.88,42,12);const page=mesh(g,papers[(n+1)%4],book);turning.push({mesh:page,offset:n*.38})}
@@ -156,5 +255,5 @@ export function createPremiereWorld(host:HTMLElement):PremiereWorld {
    for(let i=0;i<count;i++){const a=i*2.399+idle*(.03+i%4*.008),r=(.15+(i%113)/113*4.5)*birth;positions[i*3]=Math.sin(a)*r;positions[i*3+1]=-.7+((i*.017+idle*.08)%4.8)*birth;positions[i*3+2]=Math.cos(a)*r*.6}dustGeo.attributes.position.needsUpdate=true;dustMat.opacity=birth*.85
    jewel.rotation.z=idle*.08;cloudMeshes.forEach((o,i)=>{o.position.x=Math.sin(idle*.04+i)*.4;(o.material as T.MeshBasicMaterial).opacity=birth*.65})
    composer.render();if(performance.now()-start>45)slow++;if(slow>35&&quality>.7){quality=.7;renderer.setPixelRatio(quality);composer.setPixelRatio(quality);dustGeo.setDrawRange(0,Math.min(count,500));resize();slow=0}
-  },dispose(){disposed=true;host.removeEventListener('pointermove',move);host.removeEventListener('pointerleave',leave);const gs=new Set<T.BufferGeometry>(),ms=new Set<T.Material>();scene.traverse(o=>{if(o instanceof T.Mesh||o instanceof T.Points){gs.add(o.geometry);(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>ms.add(m))}});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());env.dispose();composer.passes.forEach(pass=>pass.dispose());composer.dispose();renderer.dispose();renderer.domElement.remove()}}
+  },dispose(){disposed=true;host.removeEventListener('pointermove',move);host.removeEventListener('pointerleave',leave);const gs=new Set<T.BufferGeometry>(),ms=new Set<T.Material>();scene.traverse(o=>{if(o instanceof T.Mesh||o instanceof T.Points){gs.add(o.geometry);(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>ms.add(m))}});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose());textures.forEach(t=>t.dispose());bookEnv.dispose();env.dispose();composer.passes.forEach(pass=>pass.dispose());composer.dispose();renderer.dispose();renderer.domElement.remove()}}
 }
